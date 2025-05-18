@@ -1,9 +1,9 @@
 {
     "id": "A8D5D943",
-    "path": null,
-    "project_path": null,
+    "path": "~/Documents/Team5/Team5.Rmd",
+    "project_path": "Team5.Rmd",
     "type": "r_markdown",
-    "hash": "0",
+    "hash": "1239029191",
     "contents": "",
     "dirty": false,
     "created": 1747535419736.0,
@@ -13,15 +13,16 @@
         "tempName": "Untitled1",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "1,0",
-        "scrollLine": "0"
+        "cursorPosition": "60,40",
+        "scrollLine": "46",
+        "last_setup_crc32": "8073269d2455e91d"
     },
     "folds": "",
-    "lastKnownWriteTime": 0,
-    "encoding": "",
+    "lastKnownWriteTime": 1747542246,
+    "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1747535419736,
+    "last_content_update": 1747542246476,
     "read_only": false,
     "read_only_alternatives": []
 }
