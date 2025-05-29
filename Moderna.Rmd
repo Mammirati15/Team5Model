@@ -1,0 +1,40 @@
+---
+title: "Moderna"
+output: pdf_document
+date: "2025-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+install.packages("psych")  # if not installed
+library(psych)
+```
+```{r}
+# Load the CSV file into df
+moderna_df <- read.csv("synthetic_moderna_mrna4157_trial (1).csv")
+
+# Check the structure and preview
+str(moderna_df)
+head(moderna_df)
+```
+
+```{r}
+summary(moderna_df)
+describe(moderna_df)
+```
+
+
+
+```{r}
+usethis::use_git_config(user.name = "your-github-username", user.email = "your-email@example.com")
+```
+
