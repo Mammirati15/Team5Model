@@ -16,7 +16,15 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r}
 install.packages("psych")  # if not installed
+install.packages("dplyr")
+install.packages("caret")
 library(psych)
+library(dplyr)
+library(ggplot2)
+library(skimr)
+library(DataExplorer)
+library(corrr)
+library(caret)
 ```
 ```{r}
 # Load the CSV file into df
@@ -25,16 +33,110 @@ moderna_df <- read.csv("synthetic_moderna_mrna4157_trial (1).csv")
 # Check the structure and preview
 str(moderna_df)
 head(moderna_df)
+names(moderna_df)
 ```
 
 ```{r}
 summary(moderna_df)
-describe(moderna_df)
 ```
 
-
+```{r}
+library(dplyr)
+glimpse(moderna_df)
+sapply(moderna_df, function(x) sum(is.na(x)))
+nzv <- caret::nearZeroVar(moderna_df, saveMetrics = TRUE)
+nzv[nzv$nzv == TRUE, ]
+moderna_df %>%
+  duplicated() %>%
+  sum()
+```
+# Initiate Pre-Processing
+```{r}
+moderna_df <- moderna_df %>% select(-participant_id)
+moderna_df <- moderna_df[!duplicated(moderna_df), ]
+```
 
 ```{r}
-usethis::use_git_config(user.name = "your-github-username", user.email = "your-email@example.com")
+sum(moderna_df$treatment_outcome == "" | is.na(moderna_df$treatment_outcome))
+```
+```{r}
+moderna_df <- moderna_df %>% filter(treatment_outcome != "")
+pre_proc <- preProcess(moderna_df, method = c("medianImpute", "center", "scale")) # Imputate, center, and scale
+moderna_df <- predict(pre_proc, newdata = moderna_df)
+moderna_df <- moderna_df %>%
+  mutate(across(where(is.character), as.factor))
+moderna_df <- moderna_df %>%
+  filter(!is.na(treatment_outcome) & treatment_outcome != "")
+```
+
+```{r}
+sum(is.na(treatment_outcome))
+```
+
+```{r}
+moderna_df$treatment_outcome <- factor(moderna_df$treatment_outcome, #Turn outcome into ordinal
+    levels = c("Progression", "Stable Disease", "Partial Response", "Complete Response"),
+    ordered = TRUE)
+```
+
+```{r}
+library(MASS)       
+library(ordinalForest)
+library(xgboost)
+library(yardstick)
+library(rsample)
+```
+
+```{r}
+# Split train/test
+set.seed(123)
+split <- initial_split(moderna_df, prop = 0.8)
+train <- training(split)
+test  <- testing(split)
+```
+
+```{r}
+# POLR
+polr_model <- MASS::polr(treatment_outcome ~ ., data = train, Hess = TRUE)
+polr_preds <- predict(polr_model, newdata = test)
+polr_acc <- mean(as.character(polr_preds) == as.character(test$treatment_outcome))
+
+# Recode ordinal outcome as numeric
+train_xgb <- train
+test_xgb <- test
+train_xgb$treatment_outcome <- as.numeric(train_xgb$treatment_outcome) - 1
+test_xgb$treatment_outcome <- as.numeric(test_xgb$treatment_outcome) - 1
+
+dtrain <- xgb.DMatrix(data = model.matrix(treatment_outcome ~ . -1, train_xgb),
+                      label = train_xgb$treatment_outcome)
+dtest  <- xgb.DMatrix(data = model.matrix(treatment_outcome ~ . -1, test_xgb))
+
+xgb_model <- xgboost(
+  data = dtrain,
+  objective = "reg:squarederror",
+  nrounds = 100,
+  verbose = 0
+)
+
+xgb_preds <- round(predict(xgb_model, dtest))
+xgb_preds <- factor(xgb_preds,
+                    levels = 0:3,
+                    labels = levels(moderna_df$treatment_outcome))
+xgb_acc <- mean(xgb_preds == test$treatment_outcome)
+
+# Ordinal Random Forest
+ord_forest <- ordinalForest::ordinalForest(
+  y = train$treatment_outcome,
+  X = train %>% select(-treatment_outcome),
+  ntree = 500
+)
+ord_preds <- predict(ord_forest, newdata = test)$ypred
+ord_acc <- mean(ord_preds == test$treatment_outcome)
+```
+```{r}
+tibble(
+  Model = c("Proportional Odds (polr)", "Gradient Boosting", "Ordinal Forest"),
+  Accuracy = c(polr_acc, xgb_acc, ord_acc)
+)
 ```
 
