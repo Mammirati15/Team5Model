@@ -1,0 +1,182 @@
+---
+title: "Models for Team5 ADS 503"
+output: html_document
+date: "2025-06-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Load Packages
+
+```{r}
+# Required packages
+library(tidyverse)
+library(caret)
+library(MASS)           
+library(randomForest)    
+library(e1071)            
+library(ordinal)        
+
+```
+
+## Preprocessing
+
+```{r}
+data<- read.csv("~/synthetic_moderna_mrna4157_trial.csv")
+
+#Initial Inspection
+glimpse(df)
+summary(df)
+str(df)
+skimr::skim(df)
+
+#Convert the ourcome into ordered factor
+data$treatment_outcome <- factor(data$treatment_outcome, 
+                                  levels = c("Progression", "Stable Disease", 
+                                             "Partial Response","Complete Response"),
+                                  ordered = TRUE)
+#Remove Id from data
+data <- data %>% select(-participant_id)
+
+```
+
+### Handle Missing Values
+
+```{r}
+# Add missing flags 
+data <- data %>%
+  mutate(
+    missing_post_tumor = is.na(post_treatment_tumor_size_mm),
+    missing_immune_score = is.na(immune_response_score)
+  )
+# Table to see overlap of missing values
+table(data$missing_post_tumor, data$missing_immune_score)
+
+# Count how many rows are missing both
+data %>%
+  filter(missing_post_tumor & missing_immune_score) %>%
+  nrow()
+
+```
+
+```{r}
+#Drop rows where both values are missing
+data <- data %>%
+  filter(!(is.na(post_treatment_tumor_size_mm) & is.na(immune_response_score)))
+
+#Select Columns with missing values
+knn_data <- data %>%
+  dplyr::select(post_treatment_tumor_size_mm, immune_response_score)
+
+preproc <- preProcess(knn_data, method = c("center", "scale", "knnImpute"))
+imputed <- predict(preproc, newdata = knn_data)
+
+data$post_treatment_tumor_size_mm <- imputed$post_treatment_tumor_size_mm
+data$immune_response_score <- imputed$immune_response_score
+
+```
+
+```{r}
+#Check for missing Valuse
+sum(is.na(data$post_treatment_tumor_size_mm))
+sum(is.na(data$immune_response_score))
+
+```
+
+### Check for imbalance
+
+```{r}
+# Outcome balance
+table(data$treatment_outcome)
+
+#Bar plot
+ggplot(data, aes(x = treatment_outcome)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Treatment Outcome Distribution", x = "Treatment Outcome", y = "Count") +
+  theme_minimal()
+data <- data %>% filter(!is.na(treatment_outcome))
+
+
+```
+
+```{r}
+ggplot(data, aes(x = treatment_outcome, y = immune_response_score)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Immune Response Score by Treatment Outcome",
+       x = "Treatment Outcome", y = "Immune Response Score") +
+  theme_minimal()
+
+```
+
+We explored the data to understand how different features relate to the treatment outcome. The target variable, treatment_outcome, has four categories: Progression, Stable Disease, Partial Response, and Complete Response. These were fairly well distributed, with Partial Response being the most common and Complete Response the least. When we looked at immune response scores across outcomes, we noticed a trend: patients with better outcomes (like Partial or Complete Response) tended to have slightly higher immune response scores, although there was some overlap. This suggests immune response might be useful for predicting outcomes. No strong outliers or unusual distributions were found, and missing values were handled earlier through imputation.
+
+## Split the data
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data: 80% training, 20% testing, stratified by outcome
+split_index <- createDataPartition(data$treatment_outcome, p = 0.8, list = FALSE)
+
+# Create train and test sets
+train_data <- data[split_index, ]
+test_data <- data[-split_index, ]
+
+
+#Scale Numeric predictors
+train_data_scaled <- train_data %>%
+  mutate(across(c(age, post_treatment_tumor_size_mm,
+                  immune_response_score, treatment_duration_days), scale))
+
+test_data_scaled <- test_data %>%
+  mutate(across(c(age, post_treatment_tumor_size_mm,
+                  immune_response_score, treatment_duration_days), scale))
+
+```
+
+## Proportional Odds Logistic Regression(POLR)
+
+```{r}
+# Fit the proportional odds logistic regression model
+model_polr <- polr(treatment_outcome ~ age + cancer_type + trial_arm +
+                     immune_response_score + treatment_duration_days,
+                   data = train_data,
+                   Hess = TRUE)  # Hess = TRUE to allow us to get p-values later
+
+summary(model_polr)
+
+# Predict on test set
+pred_polr <- predict(model_polr, newdata = test_data)
+
+# Create confusion matrix
+confusionMatrix(pred_polr, test_data$treatment_outcome)
+
+```
+
+## Random Forest
+
+```{r}
+#Random forest model
+rf_model <- randomForest(
+  treatment_outcome ~ age + gender + cancer_type + trial_arm +
+    baseline_tumor_size_mm + post_treatment_tumor_size_mm +
+    immune_response_score + treatment_duration_days,
+  data = train_data,
+  importance = TRUE,
+  ntree = 500
+)
+#Make predictions and evaluate
+rf_predictions <- predict(rf_model, newdata = test_data)
+
+confusionMatrix(rf_predictions, test_data$treatment_outcome)
+
+```
