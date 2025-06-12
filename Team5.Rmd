@@ -172,9 +172,85 @@ df_polr <- df_polr |>
   mutate(immune_response_score = yj_immune$x.t)
 
 ```
+Scale Numeric Predictors
+```{r}
+preProc <- preProcess(df_polr, method = c("center", "scale"))
+df_polr <- predict(preProc, df_polr)
+
+```
+Check Correlation
+```{r}
+num_vars <- df_polr |>
+  select(where(is.numeric))
+
+cor_matrix <- cor(num_vars, use = "pairwise.complete.obs")
+
+high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
+
+names(num_vars)[high_corr]
+```
+```{r}
+glimpse(df_polr)
+```
+```{r}
+df_polr <- df_polr |>
+  mutate(across(where(~ is.matrix(.x)), ~ as.numeric(.x)))
+```
+```{r}
+glimpse(df_polr)
+```
+EDA
+```{r}
+df_polr |>
+  pivot_longer(cols = c(age, immune_response_score, treatment_duration_days, tumor_size_change),
+               names_to = "predictor", values_to = "value") |>
+  ggplot(aes(x = treatment_outcome, y = value)) +
+  geom_boxplot(fill = "lightblue") +
+  facet_wrap(~ predictor, scales = "free", ncol = 2) +  # only 2 per row
+  labs(title = "Numeric Predictors vs. Treatment Outcome") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
+```
 
+```{r}
+df_polr |>
+  count(trial_arm, treatment_outcome) |>
+  group_by(trial_arm) |>
+  mutate(prop = n / sum(n)) |>
+  ggplot(aes(x = treatment_outcome, y = prop, fill = trial_arm)) +
+  geom_col(position = "dodge") +
+  labs(title = "Treatment Outcome by Trial Arm")
+
+```
+Splitting and Cross validation
+```{r}
+library(MASS)
+set.seed(42)
+
+split_index <- createDataPartition(df_polr$treatment_outcome, p = 0.8, list = FALSE)
+train_polr <- df_polr[split_index, ]
+test_polr  <- df_polr[-split_index, ]
+```
+```{r}
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3
+)
+
+polr_model <- train(
+  treatment_outcome ~ age + gender + cancer_type + trial_arm + 
+    immune_response_score + treatment_duration_days + tumor_size_change,
+  data = train_polr,
+  method = "polr",
+  trControl = ctrl,
+  preProcess = c("center", "scale")
+)
+```
+```{r}
+polr_model
+```
 
 
 
