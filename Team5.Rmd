@@ -55,14 +55,124 @@ df_new_target %>%
 ```
 ```{r}
 df_new_target %>%
-  select(where(is.numeric)) %>%
+  select_if(is.numeric) %>%  # more compatible with older dplyr versions
   pivot_longer(cols = everything(), names_to = "predictor", values_to = "value") %>%
   ggplot(aes(x = value)) +
   geom_histogram(bins = 30, fill = "blue", color = "white") +
   facet_wrap(~ predictor, scales = "free", ncol = 3) +
   labs(title = "Distribution of Numeric Predictors", x = "Value", y = "Count")
 
+
 ```
+```{r}
+df_polr <- df |> 
+  filter(!is.na(treatment_outcome),
+         treatment_outcome != "Unknown"
+         )
+```
+```{r}
+df_polr <- df_polr |>
+  mutate(treatment_outcome = factor(
+    treatment_outcome,
+    levels = c("Progression", "Stable Disease", "Partial Response", "Complete Response"),
+    ordered = TRUE
+  ))
+```
+```{r}
+df_polr |> 
+  count(gender, sort = TRUE)
+```
+```{r}
+df_polr <- df_polr |>
+  mutate(across(where(is.character), as.factor))
+```
+```{r}
+df_polr |>
+  (\(df) summary(df[, c("age", "baseline_tumor_size_mm", "post_treatment_tumor_size_mm",
+                        "immune_response_score", "treatment_duration_days")]))()
+```
+```{r}
+df_polr |>
+  filter(
+    baseline_tumor_size_mm < 0 |
+    post_treatment_tumor_size_mm < 0 |
+    immune_response_score < 0
+  ) |>
+  nrow()
+
+```
+```{r}
+df_polr <- df_polr |>
+  filter(
+    baseline_tumor_size_mm >= 0,
+    post_treatment_tumor_size_mm >= 0,
+    immune_response_score >= 0
+  )
+```
+
+```{r}
+df_polr |>
+  summarise(
+    n_missing_baseline = sum(is.na(baseline_tumor_size_mm)),
+    n_missing_post = sum(is.na(post_treatment_tumor_size_mm)),
+    n_missing_immune = sum(is.na(immune_response_score))
+  )
+
+```
+```{r}
+nrow(df_polr)
+```
+```{r}
+df_polr |>
+  summarise(across(everything(), ~ sum(is.na(.)))) |>
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "missing_count") |>
+  filter(missing_count > 0)
+
+```
+```{r}
+glimpse(df_polr)
+```
+Pre-processing
+```{r}
+df_polr <- df_polr |>
+  mutate(tumor_size_change = baseline_tumor_size_mm - post_treatment_tumor_size_mm)
+```
+```{r}
+df_polr <- df_polr |>
+  select(-baseline_tumor_size_mm, -post_treatment_tumor_size_mm)
+
+```
+
+
+
+Near Zero Variance Predictors
+```{r}
+nzv <- nearZeroVar(df_polr, saveMetrics = TRUE)
+nzv |> filter(nzv == TRUE)
+```
+```{r}
+df_polr |>
+  select_if(is.numeric) |>
+  summarise(across(
+    everything(),
+    ~ skewness(.x, na.rm = TRUE)
+  )) |>
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "skewness") |>
+  arrange(desc(abs(skewness)))
+
+
+```
+```{r}
+library(bestNormalize)
+
+# Transform immune_response_score
+yj_immune <- yeojohnson(df_polr$immune_response_score)
+
+df_polr <- df_polr |>
+  mutate(immune_response_score = yj_immune$x.t)
+
+```
+
 
 
 
