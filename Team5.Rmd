@@ -251,8 +251,78 @@ polr_model <- train(
 ```{r}
 polr_model
 ```
+```{r}
+summary(polr_model$finalModel)
+```
+<<HAVE NOT RUN AGAINST THE TEST SET YET>> CONSIDER TUNING OPTIONS
 
+-----------------------
 
+LIGHT GBM
 
+```{r}
+glimpse(df_polr)
+```
+```{r}
+df_xgb <- df_polr |>
+  select(-participant_id) 
+```
+```{r}
+set.seed(42)
+split_index <- createDataPartition(df_xgb$treatment_outcome, p = 0.8, list = FALSE)
+
+train_xgb <- df_xgb[split_index, ]
+test_xgb  <- df_xgb[-split_index, ]
+```
+Model
+```{r, warning = FALSE}
+ctrl_fast <- trainControl(method = "cv", number = 5)
+
+xgb_model <- train(
+  treatment_outcome ~ .,
+  data = train_xgb,
+  method = "xgbTree",
+  trControl = ctrl_fast,
+  preProcess = c("center", "scale"),
+  tuneLength = 3
+)
+```
+```{r}
+xgb_model
+
+```
+```{r}
+varImp(xgb_model) |> 
+  plot(top = 10)
+```
+SUPORT VECTOR ORDINAL REGRESSION
+```{r}
+df_svor <- df_polr
+str(df_svor$treatment_outcome)
+```
+```{r}
+set.seed(42)
+
+svor_split <- createDataPartition(df_svor$treatment_outcome, p= 0.8, list = FALSE)
+
+train_svor <- df_svor[svor_split, ]
+test_svor <- df_svor[-svor_split, ]
+  
+```
+```{r}
+ctrl_svor <- trainControl(
+  method="repeatedcv",
+  number = 10,
+  repeats = 3
+)
+
+svor_model <- train(
+  treatment_outcome ~ .,
+  data = train_svor,
+  method = "svmLinear",
+  trControl = ctrl_svor,
+  preProcess = c("center", "scale")
+)
+```
 
 
